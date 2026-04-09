@@ -1,0 +1,119 @@
+name: RK3568 Cross Build and Ubuntu Package (Kernel 6.1)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-compile-rk3568:
+    name: Cross compile for RK3568 (aarch64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cross build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            pkg-config \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
+
+      - name: Configure (RK3568 / arm64)
+        run: |
+          cmake -S . -B build/ci-rk3568 \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=build/linux/aarch64/arm.linux.cross.cmake \
+            -DTOOLCHAIN=aarch64-linux-gnu- \
+            -DBUILD_TEST=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: cmake --build build/ci-rk3568 -j"$(nproc)"
+
+      - name: Stage install tree
+        run: |
+          rm -rf artifacts/rootfs
+          DESTDIR="${PWD}/artifacts/rootfs" cmake --install build/ci-rk3568 --prefix /usr
+
+      - name: Pack cross build artifact
+        run: |
+          mkdir -p artifacts
+          tar -C artifacts/rootfs -czf artifacts/mpp-rk3568-ubuntu-kernel6.1-rootfs.tar.gz .
+
+      - name: Upload cross build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpp-rk3568-ubuntu-kernel6.1-cross-build
+          path: artifacts/mpp-rk3568-ubuntu-kernel6.1-rootfs.tar.gz
+          if-no-files-found: error
+
+  package-ubuntu-arm64:
+    name: Build Ubuntu arm64 deb packages
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            debhelper \
+            dh-exec \
+            dpkg-dev \
+            dpkg-cross \
+            fakeroot \
+            pkg-config \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
+
+      - name: Ensure dpkg cross cmake toolchain exists
+        run: |
+          if [ ! -f /etc/dpkg-cross/cmake/CMakeCross.txt ]; then
+            sudo mkdir -p /etc/dpkg-cross/cmake
+            cat <<'EOF' | sudo tee /etc/dpkg-cross/cmake/CMakeCross.txt >/dev/null
+          set(CMAKE_SYSTEM_NAME Linux)
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+          set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+          EOF
+          fi
+
+      - name: Build Debian packages for arm64 (RK3568 target)
+        env:
+          DEB_BUILD_OPTIONS: nocheck
+        run: |
+          dpkg-buildpackage -b -uc -us -aarm64
+
+      - name: Collect package artifacts
+        run: |
+          mkdir -p artifacts/deb
+          cp -v ../*.deb artifacts/deb/ || true
+          cp -v ../*.changes artifacts/deb/ || true
+          cp -v ../*.buildinfo artifacts/deb/ || true
+          ls -la artifacts/deb
+
+      - name: Upload Debian package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpp-rk3568-ubuntu-kernel6.1-deb
+          path: artifacts/deb
+          if-no-files-found: error
