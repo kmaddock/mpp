@@ -31,6 +31,12 @@ jobs:
             g++-aarch64-linux-gnu \
             libc6-dev-arm64-cross
 
+      - name: Provide cross pkg-config wrapper
+        run: |
+          if [ ! -e /usr/bin/aarch64-linux-gnu-pkg-config ]; then
+            sudo ln -s /usr/bin/pkg-config /usr/bin/aarch64-linux-gnu-pkg-config
+          fi
+
       - name: Configure (RK3568 / arm64)
         run: |
           cmake -S . -B build/ci-rk3568 \
@@ -39,6 +45,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=build/linux/aarch64/arm.linux.cross.cmake \
             -DTOOLCHAIN=aarch64-linux-gnu- \
             -DBUILD_TEST=OFF \
+            -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
             -DCMAKE_INSTALL_PREFIX=/usr
 
       - name: Build
@@ -71,6 +78,7 @@ jobs:
 
       - name: Install packaging dependencies
         run: |
+          sudo dpkg --add-architecture arm64
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
@@ -83,7 +91,17 @@ jobs:
             pkg-config \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
-            libc6-dev-arm64-cross
+            libc6-dev-arm64-cross \
+            libc6:arm64 \
+            libstdc++6:arm64 \
+            libgcc-s1:arm64 \
+            zlib1g:arm64
+
+      - name: Provide cross pkg-config wrapper
+        run: |
+          if [ ! -e /usr/bin/aarch64-linux-gnu-pkg-config ]; then
+            sudo ln -s /usr/bin/pkg-config /usr/bin/aarch64-linux-gnu-pkg-config
+          fi
 
       - name: Ensure dpkg cross cmake toolchain exists
         run: |
