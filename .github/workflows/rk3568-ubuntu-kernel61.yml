@@ -80,6 +80,29 @@ jobs:
         run: |
           sudo apt-get update
           sudo dpkg --add-architecture arm64
+
+          # Replace runner sources with explicit per-arch Ubuntu sources.
+          # This avoids arm64 index lookups on security.ubuntu.com/archive.ubuntu.com.
+          sudo mkdir -p /etc/apt/sources.list.d/disabled
+          sudo sh -c 'for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -e "$f" ] || continue
+            case "$f" in
+              */disabled/*) continue ;;
+            esac
+            mv "$f" /etc/apt/sources.list.d/disabled/$(basename "$f")
+          done'
+
+          cat <<'EOF' | sudo tee /etc/apt/sources.list.d/ubuntu-ci.list >/dev/null
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
+          deb [arch=amd64] http://archive.ubuntu.com/ubuntu noble-backports main restricted universe multiverse
+          deb [arch=amd64] http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-backports main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
+          EOF
+
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
