@@ -159,3 +159,44 @@ jobs:
           name: mpp-rk3568-ubuntu-kernel6.1-deb
           path: artifacts/deb
           if-no-files-found: error
+
+  create-release:
+    name: Create release
+    runs-on: ubuntu-24.04
+    needs:
+      - cross-compile-rk3568
+      - package-ubuntu-arm64
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download cross build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mpp-rk3568-ubuntu-kernel6.1-cross-build
+          path: release-artifacts/cross-build
+
+      - name: Download Debian package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mpp-rk3568-ubuntu-kernel6.1-deb
+          path: release-artifacts/deb
+
+      - name: Compute release metadata
+        id: release_meta
+        run: |
+          tag="ci-${GITHUB_REF_NAME}-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "name=RK3568 Ubuntu kernel 6.1 build ${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            release-artifacts/cross-build/*
+            release-artifacts/deb/*
